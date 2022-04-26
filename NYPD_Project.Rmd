@@ -1,0 +1,124 @@
+---
+title: "NYPD Shooting Incidents - Analysis by Time of Day and Gender"
+author: "Guy Singer"
+date: "4/26/2022"
+output:
+  pdf_document: default
+  html_document: default
+fontsize: 11pt
+geometry: margin=1in
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+```
+
+## Identifying and Importing Data
+This project examines NYPD Shooting Incident data to determine whether the hour of the day is correlated with the gender of the victim, with the hypothesis that the victim is more likely to be female during nighttime. The data in this project are imported from the federal <https://data.gov> website. The specific dataset used contains information about NYPD shooting incidents and can be found here: <https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD>
+Note:
+The libraries used in this project are the *tidyverse* and *lubridate* libraries.
+
+```{r get_NYPD_data, message = FALSE}
+
+## get current Data
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+
+shooting_inc <- read_csv(url_in)
+```
+
+## Tidying Data
+I would like to clean up this data by removing columns we will not be using (such as longitutde/latitude, details about the perpetrator, etc.).
+I am also renaming the "OCCUR_TIME" variable to "Tim".
+```{r clean_data}
+
+shootings <- subset(shooting_inc, select=c(OCCUR_TIME,VIC_SEX))
+
+shootings <- shootings %>%
+  rename(Time =OCCUR_TIME)
+
+shootings <- na.omit(shootings)
+
+shootings
+
+summary(shootings)
+```
+
+## Visualizing & Analyzing Data
+I am going to do is to plot the number of shootings (on a log scale) for each time entry in a bar graph:
+```{r visualize_data, fig.width=6, fig.height=2.2}
+
+ggplot(shootings, aes(x = Time)) +
+  geom_bar() +
+  scale_y_log10()
+```
+
+
+
+
+Next I am going to add a new variable representing the hour of day of a shooting and plot the number of shootings (on a log scale) for each hour of the time in a bar graph:
+
+```{r visualize_data2, fig.width=6, fig.height=2.2}
+
+shootings <- shootings %>%
+  mutate(Hour =hour(Time))
+
+ggplot(shootings, aes(x = Hour)) +
+  geom_bar() +
+  scale_y_log10()
+```
+
+Finally, I am going to analyze which hours of day have the highest and lowest numbers of shootings:
+```{r analyze_data, fig.width=6, fig.height=2.2}
+
+shootings %>%
+  count(Hour)%>%
+  arrange(desc(n))
+
+shootings %>%
+  count(Hour)%>%
+  arrange(n)
+```
+
+
+## Modelling Data
+Based on my visualizations and analysis, I want to model the relationship between gender of the victim and time of the shooting, and so I will perform some regressions to attempt to model it. First I will try a linear regression, which is NOT expected to work well given this problem paradigm.
+```{r model_data, fig.width=6, fig.height=2.2, warning=FALSE}
+
+shootings <- shootings %>%
+  mutate(dec_time =(hour(Time) + minute(Time) / 60 + second(Time) / 360))
+
+shootings
+
+gend_shoot = shootings %>%
+  mutate(
+    default_numeric = case_when(
+      VIC_SEX == "F" ~ 1,
+      VIC_SEX == "No" ~ 0))
+
+linear_model = lm(data = gend_shoot,
+                  default_numeric ~ dec_time)
+
+summary(linear_model)
+
+```
+
+What we see here is that "dec_time" has a positive coefficient, which means that the gender of the victim is more likely to be female the later the time. However, this relationship is very weak, as would be expected for a linear model given non-linear data. So in order to model the relationship more precisely, I am going to use logistic regression to try and model the relationship more accurately:
+
+```{r model_data2, fig.width=6, fig.height=2.2, warning=FALSE}
+
+logistic_model = glm(data = gend_shoot,
+                            default_numeric ~ dec_time,
+                            family = binomial())
+
+summary(logistic_model)
+
+```
+
+As we can see, this model does not fit our data either. Therefore, given only these experiments, we cannot confirm any hypothesis that time of day influences the gender of the victim.
+
+## Conclusion
+In this analysis, there was no relationship found between time of the shooting and gender of the shooting victim. Further analysis is needed to exclude the possibility of a relationship.
+Sources of bias in this experiment are numerous, including the author's personal bias that requires checking socioeconomic biases while engaging in the experiment. Additionally, the NYPD dataset is likely itself biased, having been collected by NYPD officers and NYC officials who may be biased in the collection, labeling, and reporting of this data. The data may also be biased due to incompleteness issues stemming from biased discovery of shootings based on various socieconomic factors. 
